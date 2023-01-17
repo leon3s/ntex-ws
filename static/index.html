@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<html>
+
+<head>
+  <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js">
+  </script>
+  <script src="/client.js">
+  </script>
+</head>
+
+<body>
+  <h3>Chat!</h3>
+  <div>
+    <button id="connect">Connect</button>&nbsp;|&nbsp;Status:
+    <span id="status">disconnected</span>
+  </div>
+  <div id="log" style="width:20em;height:15em;overflow:auto;border:1px solid black">
+  </div>
+  <form id="chatform" onsubmit="return false;">
+    <input id="text" type="text" />
+    <input id="send" type="button" value="Send" />
+  </form>
+</body>
+
+</html>
