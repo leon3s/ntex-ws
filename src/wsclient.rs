@@ -36,6 +36,6 @@ impl<Err: ErrorRenderer> WsClient<Err> {
   }
 
   pub async fn emit(&self, event: &str, data: &str) {
-    self.sink.send(ntex::ws::Message::Text(data.into())).await;
+    let _ = self.sink.send(ntex::ws::Message::Text(data.into())).await;
   }
 }

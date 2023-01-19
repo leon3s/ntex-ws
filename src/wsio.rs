@@ -3,6 +3,7 @@ use std::{
   rc::Rc,
   cell::RefCell,
   future::ready,
+  fmt::{Debug, Formatter},
 };
 
 use ntex::{
@@ -19,17 +20,71 @@ use crate::{
   wshandler::WsHandler,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WsIo {
   heartbeat_interval: u64,
   client_timeout: u64,
-  namespace: WsNamespace,
+  connect_handler: Option<fn(&WsClient)>,
+}
+
+impl Debug for WsIo {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("WsIo")
+      .field("heartbeat_interval", &self.heartbeat_interval)
+      .field("client_timeout", &self.client_timeout)
+      .finish()
+  }
+}
+
+impl Default for WsIo {
+  fn default() -> Self {
+    Self {
+      client_timeout: 10,
+      heartbeat_interval: 5,
+      connect_handler: None,
+    }
+  }
+}
+
+impl WsIo {
+  pub fn attach(&self) -> impl FnOnce(&mut web::ServiceConfig) {
+    let this = self.clone();
+    |cfg| {
+      cfg.state(this);
+      cfg.service(
+        web::scope("/wsio/")
+          .service(web::resource("/").route(web::get().to(ws_handler))),
+      );
+    }
+  }
+
+  pub fn on_connection(&mut self, handler: fn(&WsClient)) {
+    self.connect_handler = Some(handler);
+  }
 }
 
 struct ConnState {
   /// Client must send ping at least once per 10 seconds (CLIENT_TIMEOUT),
   /// otherwise we drop connection.
   hb: Instant,
+}
+
+async fn ws_handler(
+  req: HttpRequest,
+  wsio: web::types::State<WsIo>,
+) -> Result<HttpResponse, Error> {
+  // do websocket handshake and start web sockets service
+  println!(
+    "ws_handler heartbeat_interval: {}, client_timeout: {}",
+    wsio.heartbeat_interval, wsio.client_timeout
+  );
+  ws::start(
+    req.to_owned(),
+    fn_factory_with_config(move |sink| {
+      ws_service(req.to_owned(), sink, wsio.get_ref().to_owned())
+    }),
+  )
+  .await
 }
 
 /// helper method that sends ping to client every heartbeat interval
@@ -79,6 +134,10 @@ async fn ws_service(
 > {
   let client = wsclient::WsClient::new("test".into(), sink);
   let state = Rc::new(RefCell::new(ConnState { hb: Instant::now() }));
+
+  if let Some(connect_handler) = wsio.connect_handler {
+    connect_handler(&client);
+  }
 
   // disconnect notification
   let (_tx, rx) = oneshot::channel();
@@ -136,47 +195,4 @@ async fn ws_service(
     };
     ready(Ok(item))
   }))
-}
-
-async fn ws_handler(
-  req: HttpRequest,
-  wsio: web::types::State<WsIo>,
-) -> Result<HttpResponse, Error> {
-  // do websocket handshake and start web sockets service
-  println!(
-    "ws_handler heartbeat_interval: {}, client_timeout: {}",
-    wsio.heartbeat_interval, wsio.client_timeout
-  );
-  ws::start(
-    req.to_owned(),
-    fn_factory_with_config(move |sink| {
-      ws_service(req.to_owned(), sink, wsio.get_ref().to_owned())
-    }),
-  )
-  .await
-}
-
-impl Default for WsIo {
-  fn default() -> Self {
-    Self {
-      client_timeout: 10,
-      heartbeat_interval: 5,
-      namespace: WsNamespace::new("/".into()),
-    }
-  }
-}
-
-impl WsIo {
-  pub fn attach(&self) -> impl FnOnce(&mut web::ServiceConfig) {
-    let this = self.clone();
-    |cfg| {
-      cfg.state(this);
-      cfg.service(
-        web::scope("/wsio/")
-          .service(web::resource("/").route(web::get().to(ws_handler))),
-      );
-    }
-  }
-
-  pub fn on(&self, event: &str, handler: fn(WsClient)) {}
 }

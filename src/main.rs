@@ -18,9 +18,8 @@ async fn on_message(
 async fn main() -> std::io::Result<()> {
   let mut wsio = wsio::WsIo::default();
 
-  wsio.on("connection", |mut socket| {
+  wsio.on_connection(|mut socket| {
     println!("new connection {}", socket.id);
-    socket.on("message", on_message);
     // socket.on("message", |data| {})
   });
 
